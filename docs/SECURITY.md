@@ -5,3 +5,7 @@ The Tinkerbell team and community take security bugs seriously. We appreciate yo
 To report a security issue, please use the GitHub Security Advisory ["Report a Vulnerability"](https://github.com/tinkerbell/tinkerbell/security/advisories/new) tab.
 
 The Tinkerbell team will send a response indicating the next steps in handling your report. After the initial reply to your report, the security team will keep you informed of the progress towards a fix and full announcement, and may ask for additional information or guidance.
+
+## Verifying release artifacts
+
+Container images, the Helm chart and release binaries are signed in CI. See [Verifying release artifacts](technical/VERIFYING_ARTIFACTS.md).
