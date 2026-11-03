@@ -309,6 +309,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # Keyless cosign signing: the job's OIDC token identifies the workflow.
+      id-token: write
     if: |
       github.ref == 'refs/heads/main' ||
       startsWith(github.ref, 'refs/tags/v')
@@ -321,9 +323,11 @@ jobs:
           - artifact_name: tinkerbell-binaries
             image_name: ghcr.io/${{ github.repository_owner }}/tinkerbell
             make-target: build-push-image
+            metadata_file: out/metadata-tinkerbell.json
           - artifact_name: tink-agent-binaries
             image_name: ghcr.io/${{ github.repository_owner }}/tink-agent
             make-target: build-push-image-agent
+            metadata_file: out/metadata-tink-agent.json
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -373,6 +377,27 @@ jobs:
         env:
           IMAGE_NAME: ${{ matrix.image_name }}
           IMAGE_NAME_AGENT: ${{ matrix.image_name }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.4
+
+      # Sign the pushed index by digest, never by tag. --recursive also signs
+      # each platform manifest, so a reference pinned to a platform digest
+      # verifies too.
+      - name: Sign container image
+        shell: bash
+        run: |
+          digest=$(jq -r '."containerimage.digest"' "${METADATA_FILE}")
+          if [[ ! "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::no image digest in ${METADATA_FILE}: ${digest}"
+            exit 1
+          fi
+          cosign sign --yes --recursive "${IMAGE_NAME}@${digest}"
+        env:
+          IMAGE_NAME: ${{ matrix.image_name }}
+          METADATA_FILE: ${{ matrix.metadata_file }}
 
   package-publish-helm-chart:
     runs-on: ubuntu-latest
