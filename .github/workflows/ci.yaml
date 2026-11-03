@@ -383,34 +383,8 @@ jobs:
         with:
           cosign-release: v3.1.4
 
-      # Sign the pushed index and each platform manifest by digest, never by
-      # tag, so a reference pinned to either one verifies. The attestation
-      # manifests (SBOM, provenance) are not signed on their own: the index
-      # signature covers them through their digests, and each extra signature
-      # costs several seconds of Sigstore and registry round trips.
       - name: Sign container image
-        shell: bash
-        run: |
-          digest=$(jq -r '."containerimage.digest"' "${METADATA_FILE}")
-          if [[ ! "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-            echo "::error::no image digest in ${METADATA_FILE}: ${digest}"
-            exit 1
-          fi
-          index=$(docker buildx imagetools inspect --raw "${IMAGE_NAME}@${digest}")
-          platform_digests=$(jq -r '.manifests[] | select(.annotations["vnd.docker.reference.type"] != "attestation-manifest") | .digest' <<<"${index}")
-          refs=("${IMAGE_NAME}@${digest}")
-          for platform_digest in ${platform_digests}; do
-            if [[ ! "${platform_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-              echo "::error::unexpected platform manifest digest in ${IMAGE_NAME}@${digest}: ${platform_digest}"
-              exit 1
-            fi
-            refs+=("${IMAGE_NAME}@${platform_digest}")
-          done
-          if [[ ${#refs[@]} -lt 2 ]]; then
-            echo "::error::no platform manifests in ${IMAGE_NAME}@${digest}"
-            exit 1
-          fi
-          cosign sign --yes "${refs[@]}"
+        run: ./script/sign-image.sh "${IMAGE_NAME}" "${METADATA_FILE}"
         env:
           IMAGE_NAME: ${{ matrix.image_name }}
           METADATA_FILE: ${{ matrix.metadata_file }}
