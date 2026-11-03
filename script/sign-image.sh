@@ -8,8 +8,11 @@
 # through their digests, and each extra signature costs several seconds of
 # Sigstore and registry round trips.
 #
-# Keyless signing needs an OIDC identity, so this only works in GitHub Actions
-# with `id-token: write`.
+# The signature carries the identity of whoever signs. In GitHub Actions with
+# `id-token: write`, that is this repository's workflow. Without that OIDC
+# token, cosign signs with whatever identity it finds instead (another CI's
+# ambient token, or an interactive login) and pushes that signature to the
+# registry, so the script refuses to run without it.
 #
 # Usage:
 #   sign-image.sh IMAGE METADATA_FILE
@@ -19,6 +22,13 @@
 #   METADATA_FILE  The file `docker buildx build --metadata-file` wrote for the push.
 
 set -euo pipefail
+
+# cosign detects GitHub Actions through these two variables, which the runner
+# sets only for jobs with `id-token: write`.
+if [[ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" || -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]]; then
+	echo "$0: no GitHub Actions OIDC token (needs id-token: write); refusing to sign" >&2
+	exit 1
+fi
 
 if [[ $# -ne 2 ]]; then
 	echo "usage: $0 IMAGE METADATA_FILE" >&2
