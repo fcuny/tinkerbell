@@ -461,6 +461,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # Build provenance attestation for the release binaries.
+      id-token: write
+      attestations: write
     if: startsWith(github.ref, 'refs/tags/v')
     needs:
       - package-publish-helm-chart
@@ -490,8 +493,30 @@ jobs:
       - name: Fix permissions
         run: chmod +x out/tinkerbell-*
 
+      - name: Install syft
+        id: syft
+        uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          syft-version: v1.55.0
+
+      # syft reads the Go module list embedded in each binary.
+      - name: Generate SBOMs
+        run: |
+          for binary in tinkerbell-embedded-linux-amd64 tinkerbell-embedded-linux-arm64; do
+            "${SYFT}" scan "file:out/${binary}" -o "spdx-json=out/${binary}.spdx.json"
+          done
+        env:
+          SYFT: ${{ steps.syft.outputs.cmd }}
+
       - name: Generate checksums
-        run: cd out && sha256sum tinkerbell-embedded-linux-amd64 tinkerbell-embedded-linux-arm64 > checksums-embedded.txt
+        run: cd out && sha256sum tinkerbell-embedded-linux-amd64 tinkerbell-embedded-linux-arm64 tinkerbell-embedded-linux-amd64.spdx.json tinkerbell-embedded-linux-arm64.spdx.json > checksums-embedded.txt
+
+      # One SLSA provenance attestation for every file in the checksums file,
+      # stored by GitHub and verified with `gh attestation verify`.
+      - name: Attest build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: out/checksums-embedded.txt
 
       - name: Publish Changelog to GitHub
         uses: ncipollo/release-action@v1
@@ -501,4 +526,5 @@ jobs:
           generateReleaseNotes: true
           draft: true
           prerelease: true
+          # The first glob also matches the SBOMs (<binary>.spdx.json).
           artifacts: "out/tinkerbell-embedded-linux-*,out/checksums-embedded.txt"
